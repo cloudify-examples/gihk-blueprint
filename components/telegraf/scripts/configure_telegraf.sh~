@@ -1,7 +1,0 @@
-#!/bin/bash -e
-. $(ctx download-resource "components/utils")
-
-create_tmp_dir telegraf 
-
-configure_component telegraf telegraf.toml /etc/opt/telegraf/telegraf.conf
-

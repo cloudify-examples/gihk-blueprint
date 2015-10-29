@@ -1,9 +1,0 @@
-#!/bin/bash -e
-. $(ctx download-resource "components/utils")
-
-create_tmp_dir influxdb
-cd /tmp/influxdb
-
-influxdb_config="influxdb.conf"
-
-configure_component influxdb influxdb.conf /etc/opt/influxdb/influxdb.conf

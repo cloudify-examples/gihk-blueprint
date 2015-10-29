@@ -1,7 +1,0 @@
-#!/bin/bash -e
-. $(ctx download-resource "components/utils")
-
-create_tmp_dir heka
-
-configure_component heka hekad.toml /etc/heka/conf.d/00-hekad.toml
-
