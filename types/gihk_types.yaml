@@ -1,6 +1,79 @@
+dsl_definitions:
+
 node_types:
 
-  gihk.nodes.KafkaNode:
+  gihk.nodes.InfluxdbNode:
+    derived_from: cloudify.nodes.DBMS
+    properties:
+      influxdb_admin_port: 
+        type: string
+        default: 8083
+      influxdb_port: 
+        type: string
+        default: 8086
+      node_fabric_env: 
+        required: true
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/influxdb/scripts/create_influxdb.sh
+            fabric_env: 
+              default: { get_property: [SELF, node_fabric_env] }
+        configure: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/influxdb/scripts/configure_influxdb.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }
+        start: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/influxdb/scripts/start_influxdb.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }
+
+  
+  gihk.nodes.ZookeeperMasterNode:
+    derived_from: cloudify.nodes.SoftwareComponent
+    properties:
+      zookeeper_port: 
+        type: string
+        default: 2181
+      zookeeper_server_id: 
+        type: string
+        required: true
+      node_fabric_env: 
+        required: true
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/zookeeper/scripts/create_zookeeper.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }
+        configure:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/zookeeper/scripts/configure_zookeeper.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }
+        start: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/zookeeper/scripts/start_zookeeper.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }
+
+  gihk.nodes.KafkaMasterNode:
     derived_from: cloudify.nodes.SoftwareComponent
     properties:
       zookeeper_port: 
@@ -9,50 +82,66 @@ node_types:
       kafka_port: 
         type: string
         default: 9092
+      zookeeper_server_id: 
+        type: string
+        required: true
+      node_fabric_env: 
+        required: true
     interfaces:
       cloudify.interfaces.lifecycle:
-        create: components/kafka/scripts/create_kafka.sh
+        create: {}
         configure: 
-          implementation: components/kafka/scripts/configure_kafka_topic.sh
+          implementation: fabric.fabric_plugin.tasks.run_script
           inputs:
-            zookeeper_port: 
-              type: string
-              default: { get_property: [kafka, zookeeper_port] }
+            script_path:
+              default: components/kafka/scripts/configure_kafka.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }
+        start: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/kafka/scripts/start_kafka.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }
 
   gihk.nodes.HekaNode:
     derived_from: cloudify.nodes.SoftwareComponent
     properties:
-      kafka_port: 
+      kafka_master_port: 
         type: string
-        default: { get_property: [kafka, kafka_port] }
+        default: { get_property: [kafka_master, kafka_port] }
+      kafka_slave_port: 
+        type: string
+        default: { get_property: [kafka_slave, kafka_port] }
       influxdb_port: 
         type: string
-        default: { get_input: influxdb_port1 }
+        default: 8086
+      node_fabric_env: 
+        required: true
     interfaces:
       cloudify.interfaces.lifecycle:
-        create: components/heka/scripts/create_heka.sh
-        configure: components/heka/scripts/configure_heka.sh
-        start: components/heka/scripts/start_heka.sh
-
-  gihk.nodes.InfluxdbNode:
-    derived_from: cloudify.nodes.DBMS
-    properties:
-      influxdb_admin_port: 
-        type: string
-        default: { get_input: influxdb_port2 }
-      influxdb_port: 
-        type: string
-        default: { get_input: influxdb_port1 }
-    interfaces:
-      cloudify.interfaces.lifecycle:
-        create: components/influxdb/scripts/create_influxdb.sh
-        configure: components/influxdb/scripts/configure_influxdb.sh
-        start: 
-          implementation: components/influxdb/scripts/start_influxdb.sh
+        create: 
+          implementation: fabric.fabric_plugin.tasks.run_script
           inputs:
-            influxdb_port:
-              type: string
-              default: { get_input: influxdb_port1 }
+            script_path:
+              default: components/heka/scripts/create_heka.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }
+        configure: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/heka/scripts/configure_heka.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }              
+        start: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/heka/scripts/start_heka.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }            
 
   gihk.nodes.GrafanaNode:
     derived_from: cloudify.nodes.ApplicationServer
@@ -60,32 +149,82 @@ node_types:
       grafana_port: 
         type: string
         default: { get_input: grafana_port }
+      datasource_ip:
+        required: true
+      node_fabric_env: 
+        required: true
     interfaces:
       cloudify.interfaces.lifecycle:
-        create: components/grafana/scripts/create_grafana.sh
-        configure: components/grafana/scripts/configure_grafana.sh
-        start: 
-          implementation: components/grafana/scripts/start_grafana.sh
+        create: 
+          implementation: fabric.fabric_plugin.tasks.run_script
           inputs:
-            influxdb_port:
-              type: string
-              default: { get_input: influxdb_port1 }
+            script_path:
+              default: components/grafana/scripts/create_grafana.sh
+            fabric_env: 
+              default: { get_property: [SELF, node_fabric_env] }
+        configure: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/grafana/scripts/configure_grafana.sh
+            fabric_env: 
+              default: { get_property: [SELF, node_fabric_env] }
+        start: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/grafana/scripts/start_grafana.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }
+            influxdb_port: 
+              default: 8086
+            datasource_ip:
+              default: { get_property: [SELF, datasource_ip] }
             grafana_port:
-              type: string
-              default: { get_input: grafana_port }
-
+              default: { get_input: grafana_port } 
 
   gihk.nodes.TelegrafNode:
     derived_from: cloudify.nodes.SoftwareComponent
     properties:
       kafka_port: 
         type: string
-        default: { get_property: [kafka, kafka_port] }
+        default: { get_property: [kafka_master, kafka_port] }
+      node_fabric_env: 
+        required: true
     interfaces:
       cloudify.interfaces.lifecycle:
         create: 
-          implementation: components/telegraf/scripts/create_telegraf.sh
-        configure:
-          implementation: components/telegraf/scripts/configure_telegraf.sh
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/telegraf/scripts/create_telegraf.sh
+            fabric_env: 
+              default: { get_property: [SELF, node_fabric_env] }
+        configure: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/telegraf/scripts/configure_telegraf.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }              
         start: 
-          implementation: components/telegraf/scripts/start_telegraf.sh
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/telegraf/scripts/start_telegraf.sh
+            fabric_env: 
+              default: { get_property: [SELF, node_fabric_env] }
+
+relationships:
+
+  gihk.relationships.ConfigureIp:
+    derived_from: cloudify.relationships.depends_on
+    target_interfaces:
+      cloudify.interfaces.relationship_lifecycle:
+        preconfigure: components/general_scripts/configure_ip.sh
+
+  gihk.relationships.SetNodeInVM:
+    derived_from: cloudify.relationships.contained_in
+    target_interfaces:
+      cloudify.interfaces.relationship_lifecycle:
+        preconfigure: components/general_scripts/configure_ip.sh

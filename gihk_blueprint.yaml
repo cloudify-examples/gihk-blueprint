@@ -2,8 +2,9 @@ tosca_definitions_version: cloudify_dsl_1_2
 
 
 imports:
-  - http://www.getcloudify.org/spec/cloudify/3.3m7/types.yaml
-  - http://www.getcloudify.org/spec/openstack-plugin/1.3m7/plugin.yaml
+  - http://www.getcloudify.org/spec/cloudify/3.3/types.yaml
+  - http://www.getcloudify.org/spec/fabric-plugin/1.3/plugin.yaml
+  - http://www.getcloudify.org/spec/openstack-plugin/1.3/plugin.yaml
   - types/gihk_types.yaml
 
 
@@ -43,12 +44,8 @@ inputs:
     default: ''
     type: string
 
-  influxdb_port1: #user port
-    default: 8086
-    type: string
-
-  influxdb_port2: #admin port
-    default: 8083
+  ssh_key_filename:
+    default: ''
     type: string
 
   grafana_port: 
@@ -67,8 +64,112 @@ dsl_definitions:
     neutron_url: { get_input: neutron_url }
     resources_prefix: { get_input: resources_prefix }
 
+  VM_Default: &default_machine
+    type: cloudify.openstack.nodes.Server
+    properties: &default_properties
+      install_agent: false
+      management_network_name: monitoring_blueprint_network
+      openstack_config: *openstack_configuration
+      server:
+        image: 6c3047c6-17b1-4aaf-a657-9229bb481e50
+        flavor: c4b193d2-f331-4250-9b15-bbfde97c462a
+
+  fabric_env: 
+    default: &fabric_env_default
+      user: ubuntu
+      key_filename: { get_input: ssh_key_filename }
+      always_use_pty: false
+
+  fabric_env: 
+    default: &influxdb_master_fabric_env
+      <<: *fabric_env_default
+      host_string: { get_attribute: [influxdb_master_ip, floating_ip_address] }
+      
+  fabric_env: 
+    default: &influxdb_slave_fabric_env
+      <<: *fabric_env_default
+      host_string: { get_attribute: [influxdb_slave_ip, floating_ip_address] }
+
+  fabric_env: 
+    default: &kafka_master_fabric_env
+      <<: *fabric_env_default
+      host_string: { get_attribute: [kafka_master_ip, floating_ip_address] }
+
+  fabric_env:
+    default: &kafka_slave_fabric_env
+      <<: *fabric_env_default
+      host_string: { get_attribute: [kafka_slave_ip, floating_ip_address] }
+
+  fabric_env: 
+    default: &extra_fabric_env
+      <<: *fabric_env_default
+      host_string: { get_attribute: [extra_ip, floating_ip_address] }
 
 node_templates:
+
+  network:
+    type: cloudify.openstack.nodes.Network
+    properties:
+      resource_id: monitoring_blueprint_network
+      openstack_config: *openstack_configuration
+
+  subnet:
+    type: cloudify.openstack.nodes.Subnet
+    properties:
+      resource_id: monitoring_blueprint_subnet
+      subnet:
+        ip_version: 4
+        cidr: 10.67.79.0/24
+        dns_nameservers: [8.8.4.4, 8.8.8.8]
+      openstack_config: *openstack_configuration
+    relationships:
+      - target: network
+        type: cloudify.relationships.contained_in
+      - target: router
+        type: cloudify.openstack.subnet_connected_to_router
+
+  port_influxdb_master: &default_port
+    type: cloudify.openstack.nodes.Port
+    properties:
+      openstack_config: *openstack_configuration
+      resource_id: monitoring_blueprint_port
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: network
+      - type: cloudify.relationships.depends_on
+        target: subnet
+
+  port_influxdb_slave: *default_port
+
+  port_kafka_master: *default_port
+
+  port_kafka_slave: *default_port
+
+  port_extra: *default_port
+
+  router:
+    type: cloudify.openstack.nodes.Router
+    properties:
+      resource_id: monitoring_blueprint_router
+      openstack_config: *openstack_configuration
+    relationships:
+      - target: external_network
+        type: cloudify.relationships.connected_to
+
+  external_network:
+    type: cloudify.openstack.nodes.Network
+    properties:
+      use_external_resource: true
+      resource_id: { get_input: external_network_name }
+      openstack_config: *openstack_configuration
+
+  keypair:
+    type: cloudify.openstack.nodes.KeyPair
+    properties:
+      use_external_resource: false
+      resource_id: monitoring_blueprint_keypair
+      private_key_path: { get_input: ssh_key_filename }
+      openstack_config: *openstack_configuration
 
   sg_kafka:
     type: cloudify.openstack.nodes.SecurityGroup
@@ -78,9 +179,15 @@ node_templates:
         description: Security group for kafka component
       rules:
         - remote_ip_prefix: 0.0.0.0/0
-          port: { get_property: [kafka, kafka_port] }
+          port: 9092
         - remote_ip_prefix: 0.0.0.0/0
-          port: { get_property: [kafka, zookeeper_port] }
+          port: 2181
+        - remote_ip_prefix: 0.0.0.0/0
+          port: 3888
+        - remote_ip_prefix: 0.0.0.0/0
+          port: 2888  
+        - remote_ip_prefix: 0.0.0.0/0
+          port: 22
       openstack_config: *openstack_configuration
 
   sg_influxdb:
@@ -91,9 +198,15 @@ node_templates:
         description: Security group for influxdb component
       rules:
         - remote_ip_prefix: 0.0.0.0/0
-          port: { get_input: influxdb_port1 }
+          port: 8086
         - remote_ip_prefix: 0.0.0.0/0
-          port: { get_input: influxdb_port2 }
+          port: 8083
+        - remote_ip_prefix: 0.0.0.0/0
+          port: 8088
+        - remote_ip_prefix: 0.0.0.0/0
+          port: 8091
+        - remote_ip_prefix: 0.0.0.0/0
+          port: 22
       openstack_config: *openstack_configuration
 
   sg_grafana:
@@ -104,91 +217,331 @@ node_templates:
         description: Security group for grafana component
       rules:
         - remote_ip_prefix: 0.0.0.0/0
-          port: { get_input: grafana_port }
+          port: 3000
       openstack_config: *openstack_configuration
-  public_ip:
+
+  influxdb_master_ip: &default_ip
     type: cloudify.openstack.nodes.FloatingIP
     properties:
       floatingip:
         floating_network_name: { get_input: external_network_name }
       openstack_config: *openstack_configuration
 
-  VM:
-    type: cloudify.openstack.nodes.Server
-    properties:
-      resource_id: monitoring_general_server
-      cloudify_agent:
-        user: ubuntu
-      server:
-        image: 6c3047c6-17b1-4aaf-a657-9229bb481e50
-        flavor: c4b193d2-f331-4250-9b15-bbfde97c462a
-        userdata: |
-          #!/bin/bash
-          echo 127.0.1.1 $(cat /etc/hostname) | sudo tee -a sudo /etc/hosts >/dev/null
-          echo "nameserver 8.8.8.8" | sudo tee -a sudo /etc/resolv.conf > /dev/null
-          echo "nameserver 8.8.8.8" | sudo tee -a sudo /etc/resolvconf/resolv.conf.d/base > /dev/null
+  influxdb_slave_ip: *default_ip
+
+  kafka_master_ip: *default_ip
+
+  kafka_slave_ip: *default_ip
+
+  extra_ip: *default_ip
+    
+  vm_influxdb_master:
+    <<: *default_machine
     relationships:
       - type: cloudify.openstack.server_connected_to_floating_ip
-        target: public_ip
+        target: influxdb_master_ip
       - type: cloudify.openstack.server_connected_to_security_group
         target: sg_grafana
+      - type: cloudify.openstack.server_connected_to_security_group
+        target: sg_influxdb
+      - target: keypair
+        type: cloudify.openstack.server_connected_to_keypair
+      - target: port_influxdb_master
+        type: cloudify.openstack.server_connected_to_port
+
+  vm_influxdb_slave:
+    <<: *default_machine
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: vm_influxdb_master
+      - type: cloudify.openstack.server_connected_to_floating_ip
+        target: influxdb_slave_ip
+      - type: cloudify.openstack.server_connected_to_security_group
+        target: sg_grafana
+      - type: cloudify.openstack.server_connected_to_security_group
+        target: sg_influxdb
+      - target: keypair
+        type: cloudify.openstack.server_connected_to_keypair
+      - target: port_influxdb_slave
+        type: cloudify.openstack.server_connected_to_port
+
+  vm_kafka_master:
+    <<: *default_machine
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: vm_influxdb_slave 
+      - type: cloudify.openstack.server_connected_to_floating_ip
+        target: kafka_master_ip
+      - type: cloudify.openstack.server_connected_to_security_group
+        target: sg_kafka               
+      - target: keypair
+        type: cloudify.openstack.server_connected_to_keypair
+      - target: port_kafka_master
+        type: cloudify.openstack.server_connected_to_port
+
+  vm_kafka_slave:
+    <<: *default_machine
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: vm_kafka_master
+      - type: cloudify.openstack.server_connected_to_floating_ip
+        target: kafka_slave_ip
+      - type: cloudify.openstack.server_connected_to_security_group
+        target: sg_kafka
+      - target: keypair
+        type: cloudify.openstack.server_connected_to_keypair
+      - target: port_kafka_slave
+        type: cloudify.openstack.server_connected_to_port
+
+  vm_influxdb_kafka_slave:
+    <<: *default_machine
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: vm_kafka_slave
+      - type: cloudify.openstack.server_connected_to_floating_ip
+        target: extra_ip
       - type: cloudify.openstack.server_connected_to_security_group
         target: sg_kafka
       - type: cloudify.openstack.server_connected_to_security_group
         target: sg_influxdb
+      - target: keypair
+        type: cloudify.openstack.server_connected_to_keypair
+      - target: port_extra
+        type: cloudify.openstack.server_connected_to_port
 
-
-  kafka:
-    type: gihk.nodes.KafkaNode
-    relationships:
-      - type: cloudify.relationships.contained_in
-        target: VM
-      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
-        target: influxdb
-
-  heka:
-    type: gihk.nodes.HekaNode
-    relationships:
-      - type: cloudify.relationships.contained_in
-        target: VM
-      - type: cloudify.relationships.depends_on
-        target: kafka
-        target_interfaces:
-          cloudify.interfaces.relationship_lifecycle:
-            preconfigure: components/heka/scripts/configure_kafka_ip.sh
-      - type: cloudify.relationships.depends_on
-        target: influxdb
-        target_interfaces:
-          cloudify.interfaces.relationship_lifecycle:
-            preconfigure: components/heka/scripts/configure_influxdb_ip.sh
-      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions 
-        target: grafana
-
-  influxdb:
+  influxdb_master:
     type: gihk.nodes.InfluxdbNode
+    properties:
+      node_fabric_env: *influxdb_master_fabric_env
     relationships:
-      - type: cloudify.relationships.contained_in
-        target: VM
-
-  grafana:
-    type: gihk.nodes.GrafanaNode
-    relationships:
-      - type: cloudify.relationships.contained_in
-        target: VM
       - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
-        target: kafka
-
-## the telegraf component uses for metrics sender example
-  telegraf:
-    type: gihk.nodes.TelegrafNode
-    relationships:
-      - type: cloudify.relationships.contained_in
-        target: VM
-      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
-        target: heka
-      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
-        target: kafka
+        target: vm_influxdb_kafka_slave
         target_interfaces:
           cloudify.interfaces.relationship_lifecycle:
-            preconfigure: components/telegraf/scripts/configure_kafka_ip.sh
+            preconfigure: components/general_scripts/configure_ip.sh
+      - type: gihk.relationships.SetNodeInVM
+        target: vm_influxdb_master
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_slave
 
+  influxdb_slave:
+    type: gihk.nodes.InfluxdbNode
+    properties:
+      node_fabric_env: *influxdb_slave_fabric_env
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: influxdb_master
+      - type: gihk.relationships.SetNodeInVM
+        target: vm_influxdb_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_master
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_kafka_slave
+
+  influxdb_extra:
+    type: gihk.nodes.InfluxdbNode
+    properties:
+      node_fabric_env: *extra_fabric_env
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: influxdb_slave
+      - type: gihk.relationships.SetNodeInVM
+        target: vm_influxdb_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_master
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_slave
+
+  zookeeper_master:
+    type: gihk.nodes.ZookeeperMasterNode
+    properties:
+      zookeeper_server_id: 1
+      node_fabric_env: *kafka_master_fabric_env
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: influxdb_extra
+      - type: gihk.relationships.SetNodeInVM
+        target: vm_kafka_master
+      - type: gihk.relationships.ConfigureIp
+        target: vm_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_kafka_slave
+
+  zookeeper_slave:
+    type: gihk.nodes.ZookeeperMasterNode
+    properties:
+      zookeeper_server_id: 2    
+      node_fabric_env: *kafka_slave_fabric_env
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: zookeeper_master
+      - type: gihk.relationships.SetNodeInVM
+        target: vm_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_kafka_master
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_kafka_slave
+
+  zookeeper_extra:
+    type: gihk.nodes.ZookeeperMasterNode
+    properties:
+      zookeeper_server_id: 3
+      node_fabric_env: *extra_fabric_env
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: zookeeper_slave
+      - type: gihk.relationships.SetNodeInVM
+        target: vm_influxdb_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_kafka_master
+
+  kafka_master:
+    type: gihk.nodes.KafkaMasterNode
+    properties:
+      zookeeper_server_id: 1
+      node_fabric_env: *kafka_master_fabric_env
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: zookeeper_extra
+      - type: gihk.relationships.SetNodeInVM
+        target: vm_kafka_master
+      - type: gihk.relationships.ConfigureIp
+        target: vm_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_kafka_slave
+
+  kafka_slave:
+    type: gihk.nodes.KafkaMasterNode
+    properties:
+      zookeeper_server_id: 2
+      node_fabric_env: *kafka_slave_fabric_env
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: kafka_master
+      - type: gihk.relationships.SetNodeInVM
+        target: vm_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_kafka_master
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_kafka_slave
+
+  kafka_extra:
+    type: gihk.nodes.KafkaMasterNode
+    properties:
+      zookeeper_server_id: 3
+      node_fabric_env: *extra_fabric_env
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: kafka_slave
+      - type: gihk.relationships.SetNodeInVM
+        target: vm_influxdb_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_kafka_master
+
+  create_topic:
+    type: cloudify.nodes.SoftwareComponent
+    # properties:
+    #   description: A node which create kafka topic on th cluster, implemented as seperate node due to lack of lifecycle options.
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: vm_kafka_master
+      - type: cloudify.relationships.depends_on
+        target: kafka_extra
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        start: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: components/kafka/scripts/create_kafka_topic.sh
+            fabric_env: 
+              user: ubuntu
+              key_filename: { get_input: ssh_key_filename }
+              host_string: { get_attribute: [kafka_master_ip, floating_ip_address] }
+
+  heka1:
+    type: gihk.nodes.HekaNode
+    properties:
+      # description: A node which uses to convert the data from kafka topic to influxdb data form
+      node_fabric_env: *kafka_master_fabric_env
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions 
+        target: create_topic
+      - type: gihk.relationships.SetNodeInVM
+        target: vm_kafka_master
+      - type: gihk.relationships.ConfigureIp
+        target: vm_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_master
+
+  heka2:
+    type: gihk.nodes.HekaNode
+    properties:
+      node_fabric_env: *kafka_slave_fabric_env
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions 
+        target: heka1
+      - type: gihk.relationships.SetNodeInVM
+        target: vm_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_kafka_master
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_master
+
+  grafana1:
+    type: gihk.nodes.GrafanaNode
+    properties:
+      node_fabric_env: *influxdb_master_fabric_env
+      datasource_ip: { get_attribute: [influxdb_master_ip, floating_ip_address] }
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: vm_influxdb_master
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: heka2
+
+  grafana2:
+    type: gihk.nodes.GrafanaNode
+    properties:
+      node_fabric_env: *influxdb_slave_fabric_env
+      datasource_ip: { get_attribute: [influxdb_slave_ip, floating_ip_address] }
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: vm_influxdb_slave
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: grafana1
+
+  telegraf1:
+    type: gihk.nodes.TelegrafNode
+    properties:
+      # description: the telegraf component uses for metrics sender example
+      node_fabric_env: *kafka_master_fabric_env
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: grafana2
+      - type: gihk.relationships.SetNodeInVM
+        target: vm_kafka_master
+      - type: gihk.relationships.ConfigureIp
+        target: vm_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_kafka_slave
+
+  telegraf2:
+    type: gihk.nodes.TelegrafNode
+    properties:
+      node_fabric_env: *kafka_slave_fabric_env
+    relationships:
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: telegraf1
+      - type: gihk.relationships.SetNodeInVM
+        target: vm_kafka_slave
+      - type: gihk.relationships.ConfigureIp
+        target: vm_kafka_master
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_kafka_slave

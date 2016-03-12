@@ -4,5 +4,3 @@
 start_service telegraf
 
 sudo service heka restart 
-
-

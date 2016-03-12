@@ -50,7 +50,7 @@
 
 [outputs.kafka]
     # URLs of kafka brokers
-    brokers = ["{{ ctx.instance.runtime_properties.kafka_ip }}:{{ ctx.node.properties.kafka_port }}"] # EDIT THIS LINE
+    brokers = ["{{ ctx.instance.runtime_properties.vm_kafka_master_ip }}:{{ ctx.node.properties.kafka_port }}","{{ ctx.instance.runtime_properties.vm_kafka_slave_ip }}:{{ ctx.node.properties.kafka_port }}","{{ ctx.instance.runtime_properties.vm_influxdb_kafka_slave_ip }}:{{ ctx.node.properties.kafka_port }}"] # EDIT THIS LINE
     # Kafka topic for producer messages
     topic = "topic1"
 

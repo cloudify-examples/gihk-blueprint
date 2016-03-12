@@ -1,7 +1,8 @@
 #!/bin/bash -e
 . $(ctx download-resource "components/utils")
 
-heka_root=$(create_opt_dir heka)
+create_opt_dir heka
+cd /opt/heka
 
 heka_file=$(download_component heka https://github.com/mozilla-services/heka/releases/download/v0.10.0b1/heka_0.10.0b1_amd64.deb /opt/heka)
 

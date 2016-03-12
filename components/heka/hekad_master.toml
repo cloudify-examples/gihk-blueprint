@@ -1,0 +1,30 @@
+[KafkaInput]
+addrs = ["{{ ctx.instance.runtime_properties.vm_kafka_master_ip }}:{{ ctx.node.properties.kafka_master_port }}","{{ ctx.instance.runtime_properties.vm_kafka_slave_ip }}:{{ ctx.node.properties.kafka_master_port }}","{{ ctx.instance.runtime_properties.vm_influxdb_kafka_slave_ip }}:{{ ctx.node.properties.kafka_master_port }}"]
+topic = "topic1"
+
+[InfluxdbLineFilter]
+type = "SandboxFilter"
+message_matcher = "Type =~ /stats.*/"
+filename = "lua_filters/influx_batch.lua"
+
+    [InfluxdbLineFilter.config]
+    skip_fields = "**all_base** FilePath NumProcesses Environment TickerInterval"
+    tag_fields = "Hostname Environment"
+    timestamp_precision= "s"
+    flush_count = 10000
+
+[PayloadEncoder]
+
+[influxdb]
+type = "HttpOutput"
+message_matcher = "TRUE"
+address = "http://{{ ctx.instance.runtime_properties.vm_influxdb_master_ip }}:{{ ctx.node.properties.influxdb_port }}/write?db=db1&precision=s"
+encoder = "PayloadEncoder"
+username = "admin"
+password = "admin"
+
+[LogOutput]
+message_matcher = "TRUE"
+encoder = "PayloadEncoder"
+
+

@@ -9,7 +9,6 @@ function create_dir() {
 
     ctx logger info "Creating directory ${dir}..."
     sudo mkdir -p ${dir}
-    echo ${dir}
 }
 
 
@@ -17,7 +16,6 @@ function create_opt_dir() {
     component_name=$1
 
     path=$(create_dir /opt/${component_name})
-    cd ${path}
 }
 
 
@@ -32,7 +30,7 @@ function download_component() {
 	fi			
 
         cd ${destination}
-        sudo curl -sOL ${url}
+        sudo wget ${url}
 	
         file_name=$(echo "${url}" |awk -F/ '{print $NF}')
 	echo "${destination}/${file_name}"
@@ -71,7 +69,7 @@ function start_service() {
 	service=$1	
 
 	ctx logger info "Starting up ${service} service..."	
-	sudo service ${service} start /dev/null 2>&1 &
+	sudo service ${service} start 
 }
 
 
