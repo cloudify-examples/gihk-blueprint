@@ -119,7 +119,7 @@ node_templates:
       resource_id: monitoring_blueprint_subnet
       subnet:
         ip_version: 4
-        cidr: 10.67.79.0/24
+        cidr: 10.67.80.0/24
         dns_nameservers: [8.8.4.4, 8.8.8.8]
       openstack_config: *openstack_configuration
     relationships:
@@ -413,7 +413,7 @@ node_templates:
         target: vm_influxdb_kafka_slave
 
   kafka_slave:
-    type: gihk.nodes.KafkaMasterNode
+    type: gihk.nodes.KafkaSlaveNode
     properties:
       zookeeper_server_id: 2
       node_fabric_env: *kafka_slave_fabric_env
@@ -428,7 +428,7 @@ node_templates:
         target: vm_influxdb_kafka_slave
 
   kafka_extra:
-    type: gihk.nodes.KafkaMasterNode
+    type: gihk.nodes.KafkaExtraNode
     properties:
       zookeeper_server_id: 3
       node_fabric_env: *extra_fabric_env
@@ -442,7 +442,7 @@ node_templates:
       - type: gihk.relationships.ConfigureIp
         target: vm_kafka_master
 
-  create_topic:
+  create_docker_topic:
     type: cloudify.nodes.SoftwareComponent
     # properties:
     #   description: A node which create kafka topic on th cluster, implemented as seperate node due to lack of lifecycle options.
@@ -457,6 +457,28 @@ node_templates:
           implementation: fabric.fabric_plugin.tasks.run_script
           inputs:
             script_path: components/kafka/scripts/create_kafka_topic.sh
+            topic: docker
+            fabric_env: 
+              user: ubuntu
+              key_filename: { get_input: ssh_key_filename }
+              host_string: { get_attribute: [kafka_master_ip, floating_ip_address] }
+
+  create_es_topic:
+    type: cloudify.nodes.SoftwareComponent
+    # properties:
+    #   description: A node which create kafka topic on th cluster, implemented as seperate node due to lack of lifecycle options.
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: vm_kafka_master
+      - type: cloudify.relationships.depends_on
+        target: create_docker_topic
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        start: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: components/kafka/scripts/create_kafka_topic.sh
+            topic: es
             fabric_env: 
               user: ubuntu
               key_filename: { get_input: ssh_key_filename }
@@ -469,7 +491,7 @@ node_templates:
       node_fabric_env: *kafka_master_fabric_env
     relationships:
       - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions 
-        target: create_topic
+        target: create_es_topic
       - type: gihk.relationships.SetNodeInVM
         target: vm_kafka_master
       - type: gihk.relationships.ConfigureIp
@@ -478,6 +500,8 @@ node_templates:
         target: vm_influxdb_kafka_slave
       - type: gihk.relationships.ConfigureIp
         target: vm_influxdb_master
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_slave
 
   heka2:
     type: gihk.nodes.HekaNode
@@ -494,6 +518,8 @@ node_templates:
         target: vm_influxdb_kafka_slave
       - type: gihk.relationships.ConfigureIp
         target: vm_influxdb_master
+      - type: gihk.relationships.ConfigureIp
+        target: vm_influxdb_slave
 
   grafana1:
     type: gihk.nodes.GrafanaNode
@@ -517,31 +543,31 @@ node_templates:
       - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
         target: grafana1
 
-  telegraf1:
-    type: gihk.nodes.TelegrafNode
-    properties:
-      # description: the telegraf component uses for metrics sender example
-      node_fabric_env: *kafka_master_fabric_env
-    relationships:
-      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
-        target: grafana2
-      - type: gihk.relationships.SetNodeInVM
-        target: vm_kafka_master
-      - type: gihk.relationships.ConfigureIp
-        target: vm_kafka_slave
-      - type: gihk.relationships.ConfigureIp
-        target: vm_influxdb_kafka_slave
+  # telegraf1:
+  #   type: gihk.nodes.TelegrafNode
+  #   properties:
+  #     # description: the telegraf component uses for metrics sender example
+  #     node_fabric_env: *kafka_master_fabric_env
+  #   relationships:
+  #     - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+  #       target: grafana2
+  #     - type: gihk.relationships.SetNodeInVM
+  #       target: vm_kafka_master
+  #     - type: gihk.relationships.ConfigureIp
+  #       target: vm_kafka_slave
+  #     - type: gihk.relationships.ConfigureIp
+  #       target: vm_influxdb_kafka_slave
 
-  telegraf2:
-    type: gihk.nodes.TelegrafNode
-    properties:
-      node_fabric_env: *kafka_slave_fabric_env
-    relationships:
-      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
-        target: telegraf1
-      - type: gihk.relationships.SetNodeInVM
-        target: vm_kafka_slave
-      - type: gihk.relationships.ConfigureIp
-        target: vm_kafka_master
-      - type: gihk.relationships.ConfigureIp
-        target: vm_influxdb_kafka_slave
+  # telegraf2:
+  #   type: gihk.nodes.TelegrafNode
+  #   properties:
+  #     node_fabric_env: *kafka_slave_fabric_env
+  #   relationships:
+  #     - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+  #       target: telegraf1
+  #     - type: gihk.relationships.SetNodeInVM
+  #       target: vm_kafka_slave
+  #     - type: gihk.relationships.ConfigureIp
+  #       target: vm_kafka_master
+  #     - type: gihk.relationships.ConfigureIp
+  #       target: vm_influxdb_kafka_slave

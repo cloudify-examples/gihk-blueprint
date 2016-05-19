@@ -1,17 +1,17 @@
 [KafkaInput]
 addrs = ["{{ ctx.instance.runtime_properties.vm_kafka_master_ip }}:{{ ctx.node.properties.kafka_master_port }}","{{ ctx.instance.runtime_properties.vm_kafka_slave_ip }}:{{ ctx.node.properties.kafka_master_port }}","{{ ctx.instance.runtime_properties.vm_influxdb_kafka_slave_ip }}:{{ ctx.node.properties.kafka_master_port }}"]
-topic = "topic1"
+topic = "es"
 
 [InfluxdbLineFilter]
 type = "SandboxFilter"
-message_matcher = "Type =~ /stats.*/"
+message_matcher = "Type =~ /.*/"
 filename = "lua_filters/influx_batch.lua"
 
     [InfluxdbLineFilter.config]
     skip_fields = "**all_base** FilePath NumProcesses Environment TickerInterval"
     tag_fields = "Hostname Environment"
     timestamp_precision= "s"
-    flush_count = 10000
+
 
 [PayloadEncoder]
 
@@ -26,5 +26,4 @@ password = "admin"
 [LogOutput]
 message_matcher = "TRUE"
 encoder = "PayloadEncoder"
-
 

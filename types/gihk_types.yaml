@@ -95,6 +95,76 @@ node_types:
           inputs:
             script_path:
               default: components/kafka/scripts/configure_kafka.sh
+            FLOATING_IP: 
+              default: { get_attribute: [kafka_master_ip, floating_ip_address] }
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }
+        start: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/kafka/scripts/start_kafka.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }
+
+  gihk.nodes.KafkaSlaveNode:
+    derived_from: cloudify.nodes.SoftwareComponent
+    properties:
+      zookeeper_port: 
+        type: string
+        default: 2181
+      kafka_port: 
+        type: string
+        default: 9092
+      zookeeper_server_id: 
+        type: string
+        required: true
+      node_fabric_env: 
+        required: true
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create: {}
+        configure: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/kafka/scripts/configure_kafka.sh
+            FLOATING_IP: 
+              default: { get_attribute: [kafka_slave_ip, floating_ip_address] }
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }
+        start: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/kafka/scripts/start_kafka.sh
+            fabric_env:
+              default: { get_property: [SELF, node_fabric_env] }
+
+  gihk.nodes.KafkaExtraNode:
+    derived_from: cloudify.nodes.SoftwareComponent
+    properties:
+      zookeeper_port: 
+        type: string
+        default: 2181
+      kafka_port: 
+        type: string
+        default: 9092
+      zookeeper_server_id: 
+        type: string
+        required: true
+      node_fabric_env: 
+        required: true
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create: {}
+        configure: 
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: components/kafka/scripts/configure_kafka.sh
+            FLOATING_IP: 
+              default: { get_attribute: [extra_ip, floating_ip_address] }
             fabric_env:
               default: { get_property: [SELF, node_fabric_env] }
         start: 

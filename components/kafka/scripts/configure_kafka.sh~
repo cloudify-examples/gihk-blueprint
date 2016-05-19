@@ -6,5 +6,4 @@ sudo mkdir /var/kafka-logs
 sudo chmod -R 777 /var/kafka-logs
 
 ctx instance runtime_properties my_ip ${FLOATING_IP}
-
 configure_component kafka server.properties /opt/kafka/kafka_2.10-0.8.2.2/config/server.properties 

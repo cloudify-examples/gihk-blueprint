@@ -3,10 +3,8 @@
 
 echo $(ctx instance runtime_properties vm_kafka_master_ip)	vm-kafka-master | sudo tee -a sudo /etc/hosts >/dev/null
 echo $(ctx instance runtime_properties vm_kafka_slave_ip)	vm-kafka-slave | sudo tee -a sudo /etc/hosts >/dev/null
-echo $(ctx instance runtime_properties vm_influxdb_kafka_slave_ip)	vm_influxdb_kafka_slave | sudo tee -a sudo /etc/hosts >/dev/null
+echo $(ctx instance runtime_properties vm_influxdb_kafka_slave_ip)	vm-kafka-extra | sudo tee -a sudo /etc/hosts >/dev/null
 echo $(ctx instance host_ip)	localhost | sudo tee -a sudo /etc/hosts >/dev/null
-
-hostname=$(hostname)
 
 ctx logger info "Setting up Zokeeper cluster (creating 'myid' file on /tmp/zookeeper)..."
 sudo mkdir /var/zookeeper
