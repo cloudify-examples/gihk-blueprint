@@ -1,1 +1,0 @@
-{"relationships": [{"target_name": "network", "type": "cloudify.relationships.contained_in", "target_id": "network_1998a"}, {"target_name": "subnet", "type": "cloudify.relationships.depends_on", "target_id": "subnet_c2aea"}], "state": "deleted", "node_id": "port_extra", "name": "port_extra", "version": 13, "runtime_properties": {}, "id": "port_extra_944e9"}

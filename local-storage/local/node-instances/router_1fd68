@@ -1,1 +1,0 @@
-{"relationships": [{"target_name": "external_network", "type": "cloudify.relationships.connected_to", "target_id": "external_network_8ff49"}], "state": "deleted", "node_id": "router", "name": "router", "version": 13, "runtime_properties": {}, "id": "router_1fd68"}

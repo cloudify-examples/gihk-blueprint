@@ -1,1 +1,0 @@
-{"relationships": [{"target_name": "network", "type": "cloudify.relationships.contained_in", "target_id": "network_1998a"}, {"target_name": "router", "type": "cloudify.openstack.subnet_connected_to_router", "target_id": "router_1fd68"}], "state": "deleted", "node_id": "subnet", "name": "subnet", "version": 13, "runtime_properties": {}, "id": "subnet_c2aea"}
