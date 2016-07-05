@@ -11,8 +11,8 @@ create_opt_dir zookeeper
 
 ctx logger info "Envinronment was set, downlading zookeeper..."
 
-sudo wget http://mirrors.ukfast.co.uk/sites/ftp.apache.org/zookeeper/stable/zookeeper-3.4.6.tar.gz
-sudo tar -xvf zookeeper-3.4.6.tar.gz 
+sudo wget https://www.apache.org/dist/zookeeper/zookeeper-3.4.6/zookeeper-3.4.6.tar.gz
+sudo tar -xvf zookeeper-3.4.6.tar.gz
 cd zookeeper-3.4.6/
 cp conf/zoo_sample.cfg conf/zoo.cfg 
 ctx logger info "Installing zookeeper server..."
