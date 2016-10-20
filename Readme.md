@@ -1,3 +1,5 @@
+[![Build Status](https://circleci.com/gh/cloudify-examples/gihk-blueprint.svg?style=shield&circle-token=:circle-token)](https://circleci.com/gh/cloudify-examples/gihk-blueprint)
+
 # Cloudify grafana-influxdb-heka-kafka blueprint
 
 This repo is an example for a monitoring system application. The system includes 4 main components:
