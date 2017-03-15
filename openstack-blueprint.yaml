@@ -2,7 +2,7 @@ tosca_definitions_version: cloudify_dsl_1_3
 
 imports:
   - http://www.getcloudify.org/spec/cloudify/3.4/types.yaml
-  - http://www.getcloudify.org/spec/openstack-plugin/1.4/plugin.yaml
+  - http://www.getcloudify.org/spec/openstack-plugin/2.0/plugin.yaml
   - types/gihk_types.yaml
 
 inputs:
@@ -15,23 +15,65 @@ inputs:
     default: 8083
     type: string
 
-  grafana_port: 
+  grafana_port:
     default: 3000
     type: string
 
   image:
     type: string
-    default: 6c3047c6-17b1-4aaf-a657-9229bb481e50
 
   flavor:
     type: string
-    default: 196235bc-7ca5-4085-ac81-7e0242bda3f9
+
+  agent_user:
+    description: >
+      User for connecting to agent VM's
+
+  management_network_name:
+    description: >
+      management_network_name
+
+  agent_key_name:
+    description: >
+      the agent public key name (created during manager bootstrap)
+    type: string
+
+  agent_keypair_file:
+    type: string
+    default: ''
+
+  keystone_username:
+    description: YOUR KEYSTONE USERNAME
+
+  keystone_password:
+    description: YOUR KEYSTONE PASSWORD
+
+  keystone_tenant_name:
+    description: ''
+
+  keystone_url:
+    description: ''
+
+  region:
+    default: ''
+
+  external_network_name:
+    type: string
+
+  openstack_configuration:
+    default:
+      username: { get_input: keystone_username }
+      password: { get_input: keystone_password }
+      tenant_name: { get_input: keystone_tenant_name }
+      auth_url: { get_input: keystone_url }
+      region: { get_input: region }
 
 node_templates:
 
   sg_kafka:
     type: cloudify.openstack.nodes.SecurityGroup
     properties:
+      openstack_config: { get_input: openstack_configuration }
       resource_id: kafka-security-group
       security_group:
         description: Security group for kafka component
@@ -44,6 +86,7 @@ node_templates:
   sg_influxdb:
     type: cloudify.openstack.nodes.SecurityGroup
     properties:
+      openstack_config: { get_input: openstack_configuration }
       resource_id: influxdb-security-group
       security_group:
         description: Security group for influxdb component
@@ -56,6 +99,7 @@ node_templates:
   sg_grafana:
     type: cloudify.openstack.nodes.SecurityGroup
     properties:
+      openstack_config: { get_input: openstack_configuration }
       resource_id: grafana-security-group
       security_group:
         description: Security group for grafana component
@@ -65,13 +109,20 @@ node_templates:
 
   public_ip:
     type: cloudify.openstack.nodes.FloatingIP
+    properties:
+      openstack_config: { get_input: openstack_configuration }
+      floatingip:
+        floating_network_name: { get_input: external_network_name }
 
   VM:
     type: cloudify.openstack.nodes.Server
     properties:
+      openstack_config: { get_input: openstack_configuration }
       resource_id: monitoring_general_server
-      cloudify_agent:
-        user: ubuntu
+      agent_config:
+        user: { get_input: agent_user }
+        key: { get_input: agent_keypair_file }
+        install_method: remote
       server:
         image: { get_input: image }
         flavor: { get_input: flavor }
@@ -80,6 +131,7 @@ node_templates:
           echo 127.0.1.1 $(cat /etc/hostname) | sudo tee -a sudo /etc/hosts >/dev/null
           echo "nameserver 8.8.8.8" | sudo tee -a sudo /etc/resolv.conf > /dev/null
           echo "nameserver 8.8.8.8" | sudo tee -a sudo /etc/resolvconf/resolv.conf.d/base > /dev/null
+      management_network_name: { get_input: management_network_name }
     relationships:
       - type: cloudify.openstack.server_connected_to_floating_ip
         target: public_ip
@@ -143,4 +195,3 @@ node_templates:
         target_interfaces:
           cloudify.interfaces.relationship_lifecycle:
             preconfigure: components/telegraf/scripts/configure_kafka_ip.sh
-
