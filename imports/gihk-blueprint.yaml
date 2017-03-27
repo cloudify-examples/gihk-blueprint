@@ -1,0 +1,56 @@
+node_templates:
+
+  kafka:
+    type: gihk.nodes.KafkaNode
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: VM
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: influxdb
+
+  heka:
+    type: gihk.nodes.HekaNode
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: VM
+      - type: cloudify.relationships.depends_on
+        target: kafka
+        target_interfaces:
+          cloudify.interfaces.relationship_lifecycle:
+            preconfigure: components/heka/scripts/configure_kafka_ip.sh
+      - type: cloudify.relationships.depends_on
+        target: influxdb
+        target_interfaces:
+          cloudify.interfaces.relationship_lifecycle:
+            preconfigure: components/heka/scripts/configure_influxdb_ip.sh
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: grafana
+
+  influxdb:
+    type: gihk.nodes.InfluxdbNode
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: VM
+
+  grafana:
+    type: gihk.nodes.GrafanaNode
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: VM
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: kafka
+
+## the telegraf component uses for metrics sender example
+  telegraf:
+    type: gihk.nodes.TelegrafNode
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: VM
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: heka
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: kafka
+        target_interfaces:
+          cloudify.interfaces.relationship_lifecycle:
+            preconfigure: components/telegraf/scripts/configure_kafka_ip.sh
+
