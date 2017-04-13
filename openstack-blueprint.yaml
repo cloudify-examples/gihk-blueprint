@@ -63,6 +63,7 @@ dsl_definitions:
     auth_url: { get_secret: keystone_url }
     region: { get_input: region }
 
+
 node_templates:
 
   sg_kafka:
@@ -207,3 +208,17 @@ node_templates:
       openstack_config: *openstack_config
       resource_id: { get_input: key_name }
       private_key_path: { get_input: private_key_path }
+
+## the telegraf component uses for metrics sender example
+  telegraf:
+    type: gihk.nodes.TelegrafNode
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: VM
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: heka
+      - type: cloudify.relationships.depends_on #the relationship has been set in oreder to prevent installation Collisions
+        target: kafka
+        target_interfaces:
+          cloudify.interfaces.relationship_lifecycle:
+            preconfigure: components/telegraf/scripts/configure_kafka_ip.sh
