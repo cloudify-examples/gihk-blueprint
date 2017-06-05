@@ -1,46 +1,27 @@
 tosca_definitions_version: cloudify_dsl_1_3
 
 imports:
-  - http://www.getcloudify.org/spec/cloudify/4.0/types.yaml
+  - http://www.getcloudify.org/spec/cloudify/4.0.1/types.yaml
   - http://www.getcloudify.org/spec/openstack-plugin/2.0.1/plugin.yaml
   - types/gihk_types.yaml
   - imports/gihk-blueprint.yaml
+  - types/cloud_config/cloud-config.yaml
 
 inputs:
 
   image:
-    type: string
+    description: >
+      An Openstack Image ID. Tested with a Ubuntu 14.04 image.
+    default: { get_secret: ubuntu_trusty_image }
 
   flavor:
-    type: string
+    description: >
+      An Openstack Flavor ID.
+    default: { get_secret: small_image_flavor }
 
   agent_user:
+    description: The user name of the agent on the instance created from the image.
     default: ubuntu
-
-  key_name:
-    description: >
-      the agent public key name (created during manager bootstrap)
-    type: string
-    default: mongodb-openstack-key
-
-  private_key_path:
-    type: string
-    default: ~/.ssh/mongodb-openstack-key.pem
-
-  external_network_name:
-    default: external
-
-  router_name:
-    description: The Router Name
-
-  public_network_name:
-    description: The name of the Openstack public network.
-
-  public_subnet_name:
-    description: The name of the public network subnet.
-
-  region:
-    default: ''
 
   influxdb_port1: #user port
     default: 8086
@@ -61,8 +42,7 @@ dsl_definitions:
     password: { get_secret: keystone_password }
     tenant_name: { get_secret: keystone_tenant_name }
     auth_url: { get_secret: keystone_url }
-    region: { get_input: region }
-
+    region: { get_secret: region }
 
 node_templates:
 
@@ -128,23 +108,26 @@ node_templates:
       resource_id: monitoring_general_server
       agent_config:
         user: { get_input: agent_user }
-        key: { get_property: [ key, private_key_path ] }
         install_method: remote
         port: 22
+        key: { get_secret: agent_key_private }
       server:
+        key_name: ''
         image: { get_input: image }
         flavor: { get_input: flavor }
-        userdata: |
-          #!/bin/bash
-          echo 127.0.1.1 $(cat /etc/hostname) | sudo tee -a sudo /etc/hosts >/dev/null
-          echo "nameserver 8.8.8.8" | sudo tee -a sudo /etc/resolv.conf > /dev/null
-          echo "nameserver 8.8.8.8" | sudo tee -a sudo /etc/resolvconf/resolv.conf.d/base > /dev/null
       management_network_name: { get_property: [ public_network, resource_id ] }
     relationships:
-      - target: key
-        type: cloudify.openstack.server_connected_to_keypair
       - target: port
         type: cloudify.openstack.server_connected_to_port
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: openstack.nova_plugin.server.create
+          inputs:
+            args:
+              image: { get_input: image }
+              flavor: { get_input: flavor }
+              userdata: { get_attribute: [ cloudify_host_cloud_config, cloud_config ] }
 
   port:
     type: cloudify.openstack.nodes.Port
@@ -166,12 +149,29 @@ node_templates:
       - type: cloudify.openstack.port_connected_to_floating_ip
         target: public_ip
 
+  private_subnet:
+    type: cloudify.openstack.nodes.Subnet
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: true
+      resource_id: { get_secret: private_subnet_name }
+    relationships:
+      - target: private_network
+        type: cloudify.relationships.contained_in
+
+  private_network:
+    type: cloudify.openstack.nodes.Network
+    properties:
+      openstack_config: *openstack_config
+      use_external_resource: true
+      resource_id: { get_secret: private_network_name }
+
   public_subnet:
     type: cloudify.openstack.nodes.Subnet
     properties:
       openstack_config: *openstack_config
       use_external_resource: true
-      resource_id: { get_input: public_subnet_name }
+      resource_id: { get_secret: public_subnet_name }
     relationships:
       - target: public_network
         type: cloudify.relationships.contained_in
@@ -183,14 +183,14 @@ node_templates:
     properties:
       openstack_config: *openstack_config
       use_external_resource: true
-      resource_id: { get_input: public_network_name }
+      resource_id: { get_secret: public_network_name }
 
   router:
     type: cloudify.openstack.nodes.Router
     properties:
       openstack_config: *openstack_config
       use_external_resource: true
-      resource_id: { get_input: router_name }
+      resource_id: { get_secret: router_name }
     relationships:
       - target: external_network
         type: cloudify.relationships.connected_to
@@ -200,11 +200,25 @@ node_templates:
     properties:
       openstack_config: *openstack_config
       use_external_resource: true
-      resource_id: { get_input: external_network_name }
+      resource_id: { get_secret: external_network_name }
+    relationships:
+      - type: cloudify.relationships.depends_on
+        target: cloudify_host_cloud_config
 
-  key:
-    type: cloudify.openstack.nodes.KeyPair
-    properties:
-      openstack_config: *openstack_config
-      resource_id: { get_input: key_name }
-      private_key_path: { get_input: private_key_path }
+  cloudify_host_cloud_config:
+    type: cloudify.nodes.CloudConfig
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          inputs:
+            cloud_config:
+              users:
+                - name: { get_input: agent_user }
+                  shell: /bin/bash
+                  sudo: ['ALL=(ALL) NOPASSWD:ALL']
+                  ssh-authorized-keys:
+                    - { get_secret: agent_key_public }
+              runcmd:
+                - [ echo, "127.0.1.1", "$(cat /etc/hostname)", '|', "sudo", "tee", "-a", "/etc/hosts", ">/dev/null" ]
+                - [ echo, "nameserver 8.8.8.8", '|', sudo, tee, '-a', "/etc/resolv.conf", ">/dev/null" ]
+                - [ echo, "nameserver 8.8.8.8", '|', sudo, tee, '-a', "/etc/resolvconf/resolv.conf.d/base", ">/dev/null" ]
